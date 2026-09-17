@@ -1,7 +1,11 @@
 import {
   addDoc,
   collection,
+  onSnapshot,
+  orderBy,
+  query,
   serverTimestamp,
+  where,
 } from "firebase/firestore";
 import {
   getDownloadURL,
@@ -45,10 +49,14 @@ export const uploadKnowledgeDocument = (
       `knowledge/${userId}/${Date.now()}-${file.name}`;
 
     const storageRef = ref(storage, storagePath);
+
     const uploadTask = uploadBytesResumable(
       storageRef,
       file,
-      { contentType: file.type || "application/octet-stream" }
+      {
+        contentType:
+          file.type || "application/octet-stream",
+      }
     );
 
     uploadTask.on(
@@ -65,7 +73,9 @@ export const uploadKnowledgeDocument = (
       async () => {
         try {
           const downloadUrl =
-            await getDownloadURL(uploadTask.snapshot.ref);
+            await getDownloadURL(
+              uploadTask.snapshot.ref
+            );
 
           const documentRef = await addDoc(
             knowledgeRef,
@@ -101,3 +111,32 @@ export const uploadKnowledgeDocument = (
       }
     );
   });
+
+export const subscribeToKnowledgeDocuments = (
+  userId: string,
+  callback: (documents: KnowledgeDocument[]) => void
+) => {
+  const documentsQuery = query(
+    knowledgeRef,
+    where("uploadedBy", "==", userId),
+    orderBy("createdAt", "desc")
+  );
+
+  return onSnapshot(
+    documentsQuery,
+    (snapshot) => {
+      const documents = snapshot.docs.map((document) => ({
+        id: document.id,
+        ...document.data(),
+      })) as KnowledgeDocument[];
+
+      callback(documents);
+    },
+    (error) => {
+      console.error(
+        "Knowledge Vault listener failed:",
+        error
+      );
+    }
+  );
+};

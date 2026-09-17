@@ -27,7 +27,11 @@ import {
 
 import { logoutUser } from "../../../services/authService";
 import { useAuth } from "../../../context/AuthContext";
-import { uploadKnowledgeDocument } from "../../../services/knowledgeService";
+import {
+  subscribeToKnowledgeDocuments,
+  uploadKnowledgeDocument,
+  type KnowledgeDocument,
+} from "../../../services/knowledgeService";
 
 import {
   subscribeToUsers,
@@ -280,8 +284,25 @@ export default function Sidebar({
   const [knowledgeStatus, setKnowledgeStatus] =
     useState("");
 
+  const [knowledgeDocuments, setKnowledgeDocuments] =
+    useState<KnowledgeDocument[]>([]);
+
   const [selectedPersona, setSelectedPersona] =
     useState<AIPersona>("General Assistant");
+
+  useEffect(() => {
+    if (!user) {
+      setKnowledgeDocuments([]);
+      return;
+    }
+
+    const unsubscribe = subscribeToKnowledgeDocuments(
+      user.uid,
+      (documents) => setKnowledgeDocuments(documents)
+    );
+
+    return () => unsubscribe();
+  }, [user]);
 
   const promptGroups = [
     {
@@ -378,7 +399,7 @@ export default function Sidebar({
       );
 
       setKnowledgeStatus(
-        "Uploaded successfully. Ingestion is pending."
+        "Uploaded successfully. Watching ingestion status..."
       );
       setKnowledgeFile(null);
     } catch (error) {
@@ -392,6 +413,57 @@ export default function Sidebar({
     } finally {
       setKnowledgeUploading(false);
     }
+  };
+
+  const getKnowledgeStatusLabel = (
+    status: KnowledgeDocument["status"]
+  ) => {
+    switch (status) {
+      case "uploading":
+        return "Uploading";
+      case "uploaded":
+        return "Uploaded";
+      case "ingestion_pending":
+        return "Ingestion pending";
+      case "ingesting":
+        return "Ingesting";
+      case "ready":
+        return "Ready";
+      case "failed":
+        return "Failed";
+      default:
+        return "Unknown";
+    }
+  };
+
+  const getKnowledgeStatusStyle = (
+    status: KnowledgeDocument["status"]
+  ) => {
+    if (status === "ready") {
+      return {
+        background: "#ecfdf5",
+        color: "#047857",
+      };
+    }
+
+    if (status === "failed") {
+      return {
+        background: "#fef2f2",
+        color: "#b91c1c",
+      };
+    }
+
+    if (status === "ingesting") {
+      return {
+        background: "#eff6ff",
+        color: "#2563eb",
+      };
+    }
+
+    return {
+      background: "#f5f3ff",
+      color: "#6d28d9",
+    };
   };
 
   /* ============================
@@ -888,6 +960,70 @@ export default function Sidebar({
             </div>
 
             <div className="create-channel-form">
+              {knowledgeDocuments.length > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px",
+                    marginBottom: "14px",
+                  }}
+                >
+                  <label>Knowledge Assets</label>
+
+                  {knowledgeDocuments.slice(0, 8).map((document) => (
+                    <div
+                      key={document.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "10px",
+                        padding: "9px 10px",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "9px",
+                        background: "#fff",
+                      }}
+                    >
+                      <div
+                        style={{
+                          minWidth: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                        }}
+                      >
+                        <FileText size={15} />
+                        <span
+                          title={document.name}
+                          style={{
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            fontSize: "12px",
+                          }}
+                        >
+                          {document.name}
+                        </span>
+                      </div>
+
+                      <span
+                        style={{
+                          flexShrink: 0,
+                          padding: "3px 7px",
+                          borderRadius: "999px",
+                          fontSize: "10px",
+                          fontWeight: 600,
+                          ...getKnowledgeStatusStyle(document.status),
+                        }}
+                      >
+                        {getKnowledgeStatusLabel(document.status)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="form-group">
                 <label>
                   Document
@@ -965,6 +1101,17 @@ export default function Sidebar({
                   {knowledgeStatus}
                 </div>
               )}
+
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "#6b7280",
+                  lineHeight: 1.5,
+                }}
+              >
+                Status updates automatically as the Knowledge Asset moves
+                through upload and RAG ingestion.
+              </div>
 
               <div className="modal-actions">
                 <button

@@ -19,14 +19,14 @@ import {
 } from "../services/chatService";
 
 import { createDirectChat } from "../services/dmService";
-import { askGemini } from "../services/aiService";
+import { askGemini, type AISource } from "../services/aiService";
 
 import type { AppUser } from "../services/userService";
 import type { Channel } from "../services/channelService";
 
 export default function Dashboard() {
   const { user } = useAuth();
-
+ const errorResponse = "Sorry, I couldn't generate a response. Please try again.";
   /* ============================
      ACTIVE CHAT
   ============================ */
@@ -61,6 +61,8 @@ export default function Dashboard() {
     id: string;
     prompt: string;
     response: string;
+    sources: AISource[];
+    useKnowledgeVault: boolean;
     feedback: "up" | "down" | null;
   }
 
@@ -72,6 +74,9 @@ export default function Dashboard() {
 
   const [aiPersona, setAIPersona] =
     useState<AIPersona>("General Assistant");
+
+  const [useKnowledgeVault, setUseKnowledgeVault] =
+    useState(false);
 
   /* ============================
      MESSAGE SUBSCRIPTION
@@ -209,7 +214,8 @@ export default function Dashboard() {
       }[aiPersona];
 
       const response = await askGemini(
-        `${personaInstruction}\n\nUser request:\n${prompt}`
+        `${personaInstruction}\n\nUser request:\n${prompt}`,
+        useKnowledgeVault
       );
 
       setAIConversations((previous) => [
@@ -220,6 +226,15 @@ export default function Dashboard() {
           response:
             response.text ||
             "I couldn't generate a response.",
+          sources: Array.from(
+            new Map(
+              (response.sources ?? []).map((source) => [
+                source.title,
+                source,
+              ])
+            ).values()
+          ),
+          useKnowledgeVault,
           feedback: null,
         },
       ]);
@@ -230,14 +245,16 @@ export default function Dashboard() {
         "AI request failed:",
         error
       );
-
-      setAIConversations((previous) => [
+      setAIConversations(
+        (previous) => [
         ...previous,
         {
           id: conversationId,
           prompt,
-          response:
-            "Sorry, I couldn't generate a response. Please try again.",
+          response:errorResponse,
+           
+          sources: [],
+          useKnowledgeVault,
           feedback: null,
         },
       ]);
@@ -497,6 +514,27 @@ export default function Dashboard() {
                       >
                         Gemini
                       </span>
+
+                      <span
+                        style={{
+                          fontSize: "10px",
+                          padding: "2px 6px",
+                          borderRadius: "999px",
+                          background:
+                            conversation.useKnowledgeVault
+                              ? "#eef2ff"
+                              : "#f3f4f6",
+                          color:
+                            conversation.useKnowledgeVault
+                              ? "#4f46e5"
+                              : "#6b7280",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {conversation.useKnowledgeVault
+                          ? "Knowledge Vault"
+                          : "General AI"}
+                      </span>
                     </div>
 
                     <div
@@ -513,6 +551,85 @@ export default function Dashboard() {
                     >
                       {conversation.response}
                     </div>
+
+                    {conversation.sources.length > 0 && (
+                      <div
+                        style={{
+                          marginTop: "12px",
+                          paddingTop: "10px",
+                          borderTop: "1px solid #e5e7eb",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: "12px",
+                            fontWeight: 600,
+                            color: "#6b7280",
+                            marginBottom: "7px",
+                          }}
+                        >
+                          Sources
+                        </div>
+
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "6px",
+                          }}
+                        >
+                          {conversation.sources.map((source, index) => {
+                            const sourceUrl = source.url || source.uri;
+                            const isWebUri =
+                              sourceUrl.startsWith("http://") ||
+                              sourceUrl.startsWith("https://");
+
+                            return isWebUri ? (
+                              <a
+                                key={`${source.uri}-${index}`}
+                                href={sourceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "7px",
+                                  width: "fit-content",
+                                  padding: "6px 8px",
+                                  borderRadius: "6px",
+                                  background: "#f5f5ff",
+                                  color: "#4f46e5",
+                                  textDecoration: "none",
+                                  fontSize: "12px",
+                                }}
+                              >
+                                <span aria-hidden="true">📄</span>
+                                <span>{source.title}</span>
+                              </a>
+                            ) : (
+                              <div
+                                key={`${source.uri}-${index}`}
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "7px",
+                                  width: "fit-content",
+                                  padding: "6px 8px",
+                                  borderRadius: "6px",
+                                  background: "#f5f5ff",
+                                  color: "#4f46e5",
+                                  fontSize: "12px",
+                                }}
+                                title={source.uri}
+                              >
+                                <span aria-hidden="true">📄</span>
+                                <span>{source.title}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
 
                     <div
                       style={{
@@ -720,6 +837,86 @@ export default function Dashboard() {
         ============================ */}
 
         <div className="message-input-area">
+
+          {/* ============================
+              AI MODE SELECTOR
+          ============================ */}
+
+          <div
+            style={{
+              maxWidth: "900px",
+              margin: "0 auto 8px",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setUseKnowledgeVault(false)}
+              disabled={aiThinking || sending}
+              style={{
+                border: "1px solid #dfe3f0",
+                borderRadius: "8px",
+                padding: "6px 10px",
+                background:
+                  !useKnowledgeVault
+                    ? "#eef2ff"
+                    : "#ffffff",
+                color:
+                  !useKnowledgeVault
+                    ? "#4f46e5"
+                    : "#6b7280",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor:
+                  aiThinking || sending
+                    ? "not-allowed"
+                    : "pointer",
+              }}
+            >
+              ✨ General AI
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setUseKnowledgeVault(true)}
+              disabled={aiThinking || sending}
+              style={{
+                border: "1px solid #dfe3f0",
+                borderRadius: "8px",
+                padding: "6px 10px",
+                background:
+                  useKnowledgeVault
+                    ? "#eef2ff"
+                    : "#ffffff",
+                color:
+                  useKnowledgeVault
+                    ? "#4f46e5"
+                    : "#6b7280",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor:
+                  aiThinking || sending
+                    ? "not-allowed"
+                    : "pointer",
+              }}
+            >
+              📚 Knowledge Vault
+            </button>
+
+            <span
+              style={{
+                marginLeft: "4px",
+                fontSize: "11px",
+                color: "#8a94a6",
+              }}
+            >
+              {useKnowledgeVault
+                ? "Answers can use uploaded documents"
+                : "Ask Gemini anything"}
+            </span>
+          </div>
 
           <div className="message-input-wrapper">
 
