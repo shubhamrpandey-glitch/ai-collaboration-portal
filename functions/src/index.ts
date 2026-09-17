@@ -3,7 +3,7 @@ import {onDocumentCreated} from "firebase-functions/v2/firestore";
 import {getFirestore} from "firebase-admin/firestore";
 import {initializeApp} from "firebase-admin/app";
 import {GoogleAuth} from "google-auth-library";
-
+import {onInit} from "firebase-functions/v2/core";
 import {GoogleGenAI} from "@google/genai";
 
 initializeApp();
@@ -12,7 +12,9 @@ initializeApp();
 const firestore = getFirestore();
 
 const PROJECT_ID = "gcp-spb13-g9";
+
 const RAG_LOCATION = "asia-south1";
+const GEMINI_LOCATION = "global";
 
 const RAG_CORPUS =
   `projects/${PROJECT_ID}/locations/${RAG_LOCATION}/` +
@@ -21,22 +23,22 @@ const RAG_CORPUS =
 const RAG_API_BASE =
   `https://${RAG_LOCATION}-aiplatform.googleapis.com/v1`;
 
-const auth = new GoogleAuth({
-  scopes: ["https://www.googleapis.com/auth/cloud-platform"],
-});
+let auth: GoogleAuth;
+let ai: GoogleGenAI;
 
-const ai = new GoogleGenAI({
-  enterprise: true,
-  project: PROJECT_ID,
-  location: RAG_LOCATION,
-  apiVersion: "v1",
-  httpOptions: {
-    retryOptions: {
-      attempts: 4,
-      initialDelay: 1000,
-      maxDelay: 10000,
+onInit(() => {
+  auth = new GoogleAuth({
+    scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+  });
+
+  ai = new GoogleGenAI({
+    vertexai: true,
+    project: PROJECT_ID,
+    location: GEMINI_LOCATION,
+    httpOptions: {
+      apiVersion: "v1",
     },
-  },
+  });
 });
 
 export const ingestKnowledgeDocument = onDocumentCreated(
@@ -191,9 +193,32 @@ export const ingestKnowledgeDocument = onDocumentCreated(
   }
 );
 
+const sleep = async (milliseconds: number) => {
+  await new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+};
+
+const isRetryable429 = (error: unknown) => {
+  if (!error) {
+    return false;
+  }
+
+  const errorText =
+    error instanceof Error ?
+      error.message :
+      JSON.stringify(error);
+
+  return (
+    errorText.includes("429") ||
+    errorText.includes("RESOURCE_EXHAUSTED")
+  );
+};
+
 export const askGemini = onCall(
   {
     region: RAG_LOCATION,
+    timeoutSeconds: 120,
   },
   async (request) => {
     if (!request.auth) {
@@ -235,7 +260,7 @@ export const askGemini = onCall(
               },
             ],
             ragRetrievalConfig: {
-              topK: 5,
+              topK: 3,
               filter: {
                 vectorDistanceThreshold: 0.5,
               },
@@ -263,21 +288,51 @@ ${prompt.trim()}` :
             "general"
         }`
       );
+      let response;
 
-      const response =
-        await ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: contentPrompt,
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          console.log(
+            `askGemini: Gemini attempt ${attempt + 1}/3`
+          );
 
-          ...(useKnowledgeVault ?
-            {
-              config: {
-                tools: [ragTool],
-              },
-            } :
-            {}),
-        });
+          response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: contentPrompt,
 
+            ...(useKnowledgeVault ?
+              {
+                config: {
+                  tools: [ragTool],
+                },
+              } :
+              {}),
+          });
+
+          break;
+        } catch (error) {
+          if (!isRetryable429(error) || attempt === 2) {
+            throw error;
+          }
+
+          const baseDelay = 2000 * 2 ** attempt;
+          const jitter = Math.floor(Math.random() * 1000);
+          const delay = baseDelay + jitter;
+
+          console.log(
+            "askGemini: Gemini returned 429. " +
+      `Retrying in ${delay}ms.`
+          );
+
+          await sleep(delay);
+        }
+      }
+
+      if (!response) {
+        throw new Error(
+          "Gemini did not return a response."
+        );
+      }
       console.log(
         "askGemini: Gemini response received"
       );
