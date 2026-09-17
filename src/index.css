@@ -603,6 +603,8 @@ button:disabled {
   line-height: 1.5;
 
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+
+  white-space: pre-wrap;
 }
 
 .message.mine .message-bubble {
@@ -1280,4 +1282,71 @@ button:disabled {
 .modal-create:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.mt-25 {
+  margin-top: 25px;
+}
+
+.upload-button {
+  height: 36px;
+  padding: 0 13px;
+  border-radius: 8px;
+  border: 1px solid #dfe3f0;
+  background: #ffffff;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.upload-button:disabled {
+  background: #f5f6f8;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.file-attachment {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  padding: 6px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fafafa;
+  font-size: 13px;
+  margin-left: 12px;
+}
+
+.file-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* Reset the messy default margins and padding, but KEEP standard list bullets */
+.markdown-content p,
+.markdown-content ul,
+.markdown-content ol,
+.markdown-content li {
+  margin: 0;
+  padding: 0;
+}
+
+/* Ensure standard lists keep their native bullets/numbers */
+.markdown-content ul {
+  list-style-type: disc;
+  padding-left: 1.5rem; /* Keeps bullets neatly aligned */
+}
+
+.markdown-content ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
 }

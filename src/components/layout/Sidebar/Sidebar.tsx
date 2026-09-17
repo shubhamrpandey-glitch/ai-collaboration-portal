@@ -52,6 +52,9 @@ interface SidebarProps {
   onAskGemini?: () => void;
   onPromptSelect?: (prompt: string) => void;
   onPersonaSelect?: (persona: AIPersona) => void;
+  showKnowledgeVault?: boolean;
+  setShowKnowledgeVault?: (show: boolean) => void;
+  setKnowledgeDocument?: (doc: KnowledgeDocument) => void;
 }
 
 export default function Sidebar({
@@ -61,6 +64,9 @@ export default function Sidebar({
   onAskGemini,
   onPromptSelect,
   onPersonaSelect,
+  showKnowledgeVault,
+  setShowKnowledgeVault,
+  setKnowledgeDocument,
 }: SidebarProps) {
   const { user } = useAuth();
 
@@ -269,8 +275,8 @@ export default function Sidebar({
   const [showPersonaPicker, setShowPersonaPicker] =
     useState(false);
 
-  const [showKnowledgeVault, setShowKnowledgeVault] =
-    useState(false);
+  // const [showKnowledgeVault, setShowKnowledgeVault] =
+  //   useState(false);
 
   const [knowledgeFile, setKnowledgeFile] =
     useState<File | null>(null);
@@ -392,12 +398,13 @@ export default function Sidebar({
       setKnowledgeProgress(0);
       setKnowledgeStatus("Uploading document...");
 
-      await uploadKnowledgeDocument(
+      const knowledgeDocument = await uploadKnowledgeDocument(
         knowledgeFile,
         user.uid,
         (progress) => setKnowledgeProgress(progress)
       );
 
+      setKnowledgeDocument?.(knowledgeDocument);
       setKnowledgeStatus(
         "Uploaded successfully. Watching ingestion status..."
       );

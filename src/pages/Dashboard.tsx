@@ -1,11 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   MessageSquare,
   Send,
   ThumbsDown,
   ThumbsUp,
   Sparkles,
+  Upload,
+  FileText,
+  X,
 } from "lucide-react";
+import Markdown from 'react-markdown';
 
 import { useAuth } from "../context/AuthContext";
 
@@ -23,6 +27,7 @@ import { askGemini, type AISource } from "../services/aiService";
 
 import type { AppUser } from "../services/userService";
 import type { Channel } from "../services/channelService";
+import { type KnowledgeDocument } from "../services/knowledgeService";
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -75,8 +80,21 @@ export default function Dashboard() {
   const [aiPersona, setAIPersona] =
     useState<AIPersona>("General Assistant");
 
-  const [useKnowledgeVault, setUseKnowledgeVault] =
-    useState(false);
+  const [useKnowledgeVault, setUseKnowledgeVault] = useState(false);
+
+  const [showKnowledgeVault, setShowKnowledgeVault] = useState(false);
+
+  const [knowledgeDocument, setKnowledgeDocument] =
+    useState<KnowledgeDocument | null>(null);
+
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({
+      behavior: 'auto',
+      block: 'end',
+    });
+  }, [messages]);
 
   /* ============================
      MESSAGE SUBSCRIPTION
@@ -182,6 +200,31 @@ export default function Dashboard() {
     }
   };
 
+  const handleSendAI = async (message: string, meta?: any) => {
+    if (!user || !message.trim() || sending) {
+      return;
+    }
+
+    try {
+      setSending(true);
+
+      await sendMessage(
+        activeChatId,
+        user.uid,
+        'AI Assistant (Gemini)',
+        message,
+        'ai',
+        meta, // Meta data for AI message
+      );
+
+      setMessage('');
+    } catch (error) {
+      console.error('Error sending message:', error);
+    } finally {
+      setSending(false);
+    }
+  };
+
   /* ============================
      ASK AI
   ============================ */
@@ -198,6 +241,8 @@ export default function Dashboard() {
         .slice(2)}`;
 
     try {
+      await handleSend();
+
       setAIThinking(true);
 
       const personaInstruction = {
@@ -218,26 +263,44 @@ export default function Dashboard() {
         useKnowledgeVault
       );
 
-      setAIConversations((previous) => [
-        ...previous,
-        {
-          id: conversationId,
-          prompt,
-          response:
-            response.text ||
-            "I couldn't generate a response.",
-          sources: Array.from(
-            new Map(
-              (response.sources ?? []).map((source) => [
-                source.title,
-                source,
-              ])
-            ).values()
-          ),
-          useKnowledgeVault,
-          feedback: null,
-        },
-      ]);
+      await handleSendAI(response.text, {
+        id: conversationId,
+        prompt,
+        response:
+          response.text ||
+          "I couldn't generate a response.",
+        sources: Array.from(
+          new Map(
+            (response.sources ?? []).map((source) => [
+              source.title,
+              source,
+            ])
+          ).values()
+        ),
+        useKnowledgeVault,
+        feedback: null,
+      });
+
+      // setAIConversations((previous) => [
+      //   ...previous,
+      //   {
+      //     id: conversationId,
+      //     prompt,
+      //     response:
+      //       response.text ||
+      //       "I couldn't generate a response.",
+      //     sources: Array.from(
+      //       new Map(
+      //         (response.sources ?? []).map((source) => [
+      //           source.title,
+      //           source,
+      //         ])
+      //       ).values()
+      //     ),
+      //     useKnowledgeVault,
+      //     feedback: null,
+      //   },
+      // ]);
 
       setMessage("");
     } catch (error) {
@@ -245,41 +308,81 @@ export default function Dashboard() {
         "AI request failed:",
         error
       );
-      setAIConversations(
-        (previous) => [
-        ...previous,
-        {
-          id: conversationId,
-          prompt,
-          response:errorResponse,
+      await handleSendAI(errorResponse, {
+        id: conversationId,
+        prompt,
+        response:errorResponse,
+          
+        sources: [],
+        useKnowledgeVault,
+        feedback: null,
+      });
+
+      // setAIConversations(
+      //   (previous) => [
+      //   ...previous,
+      //   {
+      //     id: conversationId,
+      //     prompt,
+      //     response:errorResponse,
            
-          sources: [],
-          useKnowledgeVault,
-          feedback: null,
-        },
-      ]);
-      setMessage("");
+      //     sources: [],
+      //     useKnowledgeVault,
+      //     feedback: null,
+      //   },
+      // ]);
+      setMessage('');
     } finally {
       setAIThinking(false);
     }
   };
 
-  const handleAIFeedback = (
-    id: string,
+  const handleAIFeedback = async (
+    message: ChatMessage,
     feedback: "up" | "down"
   ) => {
-    setAIConversations((previous) =>
-      previous.map((conversation) =>
-        conversation.id === id
+    // setAIConversations((previous) =>
+    //   previous.map((conversation) =>
+    //     conversation.id === id
+    //       ? {
+    //           ...conversation,
+    //           feedback:
+    //             conversation.feedback === feedback
+    //               ? null
+    //               : feedback,
+    //         }
+    //       : conversation
+    //   )
+    // );
+
+    //
+    // if (!user) {
+    //   return;
+    // }
+
+    // try {
+    //   await updateMessage(activeChatId, message.id, {
+    //     meta: {
+    //       ...message.meta,
+    //       feedback: message.meta?.feedback === feedback ? null : feedback,
+    //     },
+    //   });
+    // } catch (error) {
+    //   console.error('updateMessage request failed:', error);
+    // }
+
+    setMessages((prevMessages) =>
+      prevMessages.map((msg) =>
+        msg.id === message.id
           ? {
-              ...conversation,
-              feedback:
-                conversation.feedback === feedback
-                  ? null
-                  : feedback,
+              ...msg,
+              meta: {
+                ...msg.meta,
+                feedback: message.meta?.feedback === feedback ? null : feedback,
+              },
             }
-          : conversation
-      )
+          : msg,
+      ),
     );
   };
 
@@ -330,6 +433,10 @@ export default function Dashboard() {
       value?.charAt(0).toUpperCase() ||
       "U"
     );
+  };
+
+  const handleUploadClick = () => {
+    setShowKnowledgeVault(true);
   };
 
   /* ============================
@@ -406,6 +513,9 @@ export default function Dashboard() {
         onAskGemini={handleOpenAI}
         onPromptSelect={handlePromptSelect}
         onPersonaSelect={handlePersonaSelect}
+        showKnowledgeVault={showKnowledgeVault}
+        setShowKnowledgeVault={setShowKnowledgeVault}
+        setKnowledgeDocument={setKnowledgeDocument}
       />
 
       {/* ============================
@@ -430,7 +540,7 @@ export default function Dashboard() {
             AI ASSISTANT
         ============================ */}
 
-        {(aiConversations.length > 0 || aiThinking) && (
+        {false && (aiConversations.length > 0 || aiThinking) && (
           <div
             style={{
               padding: "18px 28px 0",
@@ -783,8 +893,11 @@ export default function Dashboard() {
             messages.map((msg) => {
 
               const isMine =
+                msg.type === 'user' && 
                 msg.senderId ===
                 user?.uid;
+
+              const isAIMessage = msg.type === 'ai';
 
               return (
                 <div
@@ -798,11 +911,31 @@ export default function Dashboard() {
 
                   {/* AVATAR */}
 
-                  <div className="message-avatar">
-                    {getInitial(
-                      msg.senderEmail
-                    )}
-                  </div>
+                  {
+                    isAIMessage ? (
+                      <div
+                        className="mt-25"
+                        style={{
+                          width: "34px",
+                          height: "34px",
+                          minWidth: "34px",
+                          borderRadius: "10px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          background: "#eef2ff",
+                          color: "#6366f1",
+                        }}
+                      >
+                        <Sparkles size={17} />
+                      </div>
+                     ) : (
+                        <div className="message-avatar mt-25">
+                          {getInitial(
+                            msg.senderEmail
+                          )}
+                        </div>)
+                  }  
 
                   {/* MESSAGE */}
 
@@ -816,11 +949,186 @@ export default function Dashboard() {
                           : msg.senderEmail}
                       </span>
 
+                      {isAIMessage && (
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            padding: "2px 6px",
+                            borderRadius: "999px",
+                            background:
+                              msg.meta?.useKnowledgeVault
+                                ? "#eef2ff"
+                                : "#f3f4f6",
+                            color:
+                              msg.meta?.useKnowledgeVault
+                                ? "#4f46e5"
+                                : "#6b7280",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {msg.meta?.useKnowledgeVault
+                            ? "Knowledge Vault"
+                            : "General AI"}
+                        </span>
+                      )}
+
                     </div>
 
-                    <div className="message-bubble">
-                      {msg.text}
+                    <div className="message-bubble markdown-content">
+                      {/* {msg.text} */}
+                      {isAIMessage ? (
+                        <Markdown>
+                          {msg.text}
+                        </Markdown>) : msg.text}
                     </div>
+
+                    {isAIMessage && (
+                      <>
+                        {msg.meta?.sources && msg.meta?.sources.length > 0 && (
+                          <div
+                            style={{
+                              marginTop: "12px",
+                              paddingTop: "10px",
+                              borderTop: "1px solid #e5e7eb",
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize: "12px",
+                                fontWeight: 600,
+                                color: "#6b7280",
+                                marginBottom: "7px",
+                              }}
+                            >
+                              Sources
+                            </div>
+
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "6px",
+                              }}
+                            >
+                              {msg.meta?.sources.map((source: any, index: number) => {
+                                const sourceUrl = source.url || source.uri;
+                                const isWebUri =
+                                  sourceUrl.startsWith("http://") ||
+                                  sourceUrl.startsWith("https://");
+
+                                return isWebUri ? (
+                                  <a
+                                    key={`${source.uri}-${index}`}
+                                    href={sourceUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "7px",
+                                      width: "fit-content",
+                                      padding: "6px 8px",
+                                      borderRadius: "6px",
+                                      background: "#f5f5ff",
+                                      color: "#4f46e5",
+                                      textDecoration: "none",
+                                      fontSize: "12px",
+                                    }}
+                                  >
+                                    <span aria-hidden="true">📄</span>
+                                    <span>{source.title}</span>
+                                  </a>
+                                ) : (
+                                  <div
+                                    key={`${source.uri}-${index}`}
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "7px",
+                                      width: "fit-content",
+                                      padding: "6px 8px",
+                                      borderRadius: "6px",
+                                      background: "#f5f5ff",
+                                      color: "#4f46e5",
+                                      fontSize: "12px",
+                                    }}
+                                    title={source.uri}
+                                  >
+                                    <span aria-hidden="true">📄</span>
+                                    <span>{source.title}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            marginTop: "8px",
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleAIFeedback(
+                                msg,
+                                "up"
+                              )
+                            }
+                            aria-label="Helpful response"
+                            title="Helpful"
+                            style={{
+                              border: "none",
+                              background:
+                                msg.meta?.feedback === "up"
+                                  ? "#eef2ff"
+                                  : "transparent",
+                              color:
+                                msg.meta?.feedback === "up"
+                                  ? "#6366f1"
+                                  : "#6b7280",
+                              padding: "6px",
+                              borderRadius: "7px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <ThumbsUp size={15} />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleAIFeedback(
+                                msg,
+                                "down"
+                              )
+                            }
+                            aria-label="Unhelpful response"
+                            title="Not helpful"
+                            style={{
+                              border: "none",
+                              background:
+                                msg.meta?.feedback === "down"
+                                  ? "#fef2f2"
+                                  : "transparent",
+                              color:
+                                msg.meta?.feedback === "down"
+                                  ? "#dc2626"
+                                  : "#6b7280",
+                              padding: "6px",
+                              borderRadius: "7px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <ThumbsDown size={15} />
+                          </button>
+                        </div>
+                      </>
+                    )}
 
                   </div>
 
@@ -830,6 +1138,55 @@ export default function Dashboard() {
 
           )}
 
+          {aiThinking && (
+            <div
+              style={{
+                // maxWidth: "900px",
+                width: "100%",
+                margin: "0 auto 18px",
+                display: "flex",
+                gap: "12px",
+                alignItems: "center",
+                color: "#6b7280",
+                fontSize: "13px",
+              }}
+            >
+              <div
+                style={{
+                  width: "34px",
+                  height: "34px",
+                  minWidth: "34px",
+                  borderRadius: "10px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "#eef2ff",
+                  color: "#6366f1",
+                }}
+              >
+                <Sparkles size={17} />
+              </div>
+
+              <span>
+                AI Assistant is thinking...
+              </span>
+
+              <span
+                aria-hidden="true"
+                style={{
+                  display: "inline-flex",
+                  gap: "3px",
+                }}
+              >
+                <span>•</span>
+                <span>•</span>
+                <span>•</span>
+              </span>
+            </div>
+          )}
+
+          {/* Always keep this as the last element */}
+          <div ref={messagesEndRef} />
         </div>
 
         {/* ============================
@@ -844,7 +1201,8 @@ export default function Dashboard() {
 
           <div
             style={{
-              maxWidth: "900px",
+              // maxWidth: "900px",
+              width: "100%",
               margin: "0 auto 8px",
               display: "flex",
               alignItems: "center",
@@ -916,6 +1274,21 @@ export default function Dashboard() {
                 ? "Answers can use uploaded documents"
                 : "Ask Gemini anything"}
             </span>
+
+            {/* KNOWLEDGE DOCUMENT */}
+            {useKnowledgeVault && knowledgeDocument && (
+              <div className="file-attachment">
+                <FileText className="file-icon" size={18} />
+                <span>{knowledgeDocument.name}</span>
+
+                <button
+                  className="file-remove"
+                  onClick={() => setKnowledgeDocument(null)}
+                >
+                  <X size={18} strokeWidth={2} />
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="message-input-wrapper">
@@ -935,6 +1308,21 @@ export default function Dashboard() {
               onKeyDown={handleKeyDown}
               disabled={sending || aiThinking}
             />
+
+            {useKnowledgeVault && (
+              <button
+                className="upload-button"
+                type="button"
+                onClick={handleUploadClick}
+                disabled={
+                  aiThinking ||
+                  sending
+                }
+              >
+                <Upload size={18} strokeWidth={2} />
+                <span>Upload</span>
+              </button>
+            )}
 
             <button
               type="button"

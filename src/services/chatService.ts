@@ -1,13 +1,18 @@
 import {
   addDoc,
   collection,
+  doc,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
-} from "firebase/firestore";
+  setDoc,
+} from 'firebase/firestore';
 
 import { db } from "./firebase";
+
+export type SenderType = 'user' | 'ai';
 
 export interface ChatMessage {
   id: string;
@@ -15,7 +20,8 @@ export interface ChatMessage {
   senderEmail: string;
   text: string;
   createdAt: any;
-  type: "user" | "ai";
+  type: SenderType;
+  meta?: any;
 }
 
 const getMessagesRef = (chatId: string) => {
@@ -31,7 +37,9 @@ export const sendMessage = async (
   chatId: string,
   senderId: string,
   senderEmail: string,
-  text: string
+  text: string,
+  type: SenderType = 'user',
+  meta?: any,
 ) => {
   if (!text.trim()) return;
 
@@ -42,8 +50,48 @@ export const sendMessage = async (
       senderEmail,
       text: text.trim(),
       createdAt: serverTimestamp(),
-      type: "user",
+      type,
+      ...(meta ? { meta } : {}),
     }
+  );
+};
+
+
+export const updateMessage = async (
+  chatId: string,
+  msgId: string,
+  messageData: Partial<ChatMessage>,
+) => {
+  const messageRef = doc(db, 'chats', chatId, 'messages', msgId);
+
+  // await updateDoc(messageRef, {
+  //   senderId: messageData.senderId,
+  //   senderEmail: messageData.senderEmail,
+  //   text: messageData.text,
+  //   updatedAt: serverTimestamp(),
+  //   type: messageData.type,
+  //   ...(messageData.meta ? { meta: messageData.meta } : {}),
+  // });
+
+  const snapshot = await getDoc(messageRef);
+
+  if (!snapshot.exists()) {
+    console.log('Message document does not exist');
+    return;
+  }
+
+  await setDoc(
+    messageRef,
+    {
+      ...messageData,
+      // senderId: messageData.senderId,
+      // senderEmail: messageData.senderEmail,
+      // text: messageData.text,
+      // updatedAt: serverTimestamp(),
+      // type: messageData.type,
+      // ...(messageData.meta ? { meta: messageData.meta } : {}),
+    },
+    { merge: true },
   );
 };
 
