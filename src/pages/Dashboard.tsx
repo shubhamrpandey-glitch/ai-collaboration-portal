@@ -338,8 +338,9 @@ export default function Dashboard() {
   };
 
   const handleAIFeedback = async (
-    message: ChatMessage,
-    feedback: "up" | "down"
+    id: string,
+    feedback: "up" | "down",
+    message?: ChatMessage
   ) => {
     // setAIConversations((previous) =>
     //   previous.map((conversation) =>
@@ -1075,8 +1076,9 @@ export default function Dashboard() {
                             type="button"
                             onClick={() =>
                               handleAIFeedback(
-                                msg,
-                                "up"
+                                msg.id,
+                                "up",
+                                msg
                               )
                             }
                             aria-label="Helpful response"
@@ -1103,8 +1105,9 @@ export default function Dashboard() {
                             type="button"
                             onClick={() =>
                               handleAIFeedback(
-                                msg,
-                                "down"
+                                msg.id,
+                                "down",
+                                msg
                               )
                             }
                             aria-label="Unhelpful response"
