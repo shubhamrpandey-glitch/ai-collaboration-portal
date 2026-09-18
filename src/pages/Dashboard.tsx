@@ -372,6 +372,10 @@ export default function Dashboard() {
     //   console.error('updateMessage request failed:', error);
     // }
 
+    if(!message) {
+      return;
+    }
+
     setMessages((prevMessages) =>
       prevMessages.map((msg) =>
         msg.id === message.id
